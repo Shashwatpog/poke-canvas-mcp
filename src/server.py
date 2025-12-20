@@ -12,10 +12,24 @@ mcp = FastMCP("poke-canvas-mcp")
 
 @mcp.tool(description="get a list of all the canvas courses")
 def get_courses(_=None):
-    url = base_url+"/api/v1/courses?per_page=1000"
+    url = base_url+"/api/v1/courses?per_page=100"
     headers = {"Authorization": f"Bearer {access_token}"}
     r = httpx.get(url, headers=headers)
     return r.json();
+
+@mcp.tool(description="get a list of the dashboard cards of the courses")
+def get_dashboard_cards():
+    url = base_url+"/api/v1/dashboard/dashboard_cards?per_page=100"
+    headers = {"Authorization" : f"Bearer {access_token}"}
+    r = httpx.get(url, headers=headers)
+    cards =  r.json()
+    data = []
+    for card in cards:
+        name = card["shortName"]
+        id = card["id"]
+        data.append([name, id])
+    return data;
+
 
 
 if __name__ == "__main__":
