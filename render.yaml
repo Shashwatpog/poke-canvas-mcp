@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: fastmcp-server
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python src/server.py
+    plan: free
+    autoDeploy: false
+    envVars:
+      - key: ENVIRONMENT
+        value: production
