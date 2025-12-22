@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 import os
 import httpx
-import datetime
-from datetime import timezone, timedelta
+from datetime import datetime,timezone, timedelta
 from fastmcp import FastMCP
 from dotenv import load_dotenv
 
@@ -67,10 +66,10 @@ def get_assignments(course_id: int, days_ahead: int, include_overdue: bool):
         if not due_at_raw:
             continue
         
-        due = datetime.datetime.isoformat(due_at_raw.replace("Z","+00:00"))
+        due = datetime.fromisoformat(due_at_raw.replace("Z","+00:00"))
 
         submission  =  assignment.get("submission") or {}
-        submitted = assignment.get("submitted_at") is not None
+        submitted = submission.get("submitted_at") is not None
 
         is_overdue = due < now and not submitted
         is_upcoming = now <= due <= end
@@ -91,6 +90,7 @@ def get_assignments(course_id: int, days_ahead: int, include_overdue: bool):
     results.sort(key=lambda a: (not a["is_overdue"], a["due_at"]))
 
     return results;
+
 
 
 if __name__ == "__main__":
