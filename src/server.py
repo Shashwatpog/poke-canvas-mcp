@@ -562,22 +562,40 @@ def get_today_summary(
 
     graded.sort(key=lambda x: x.get("grade_posted_at", ""), reverse=True)
 
-    # overdue and not submitted assignments
+    # overdue and not submitted assignments in the last 7 days cuz i be forgetting
     overdue: list[dict[str, Any]] = []
+    overdue_cutoff = now - timedelta(days=7)
+
     for course in courses:
         course_id = course["id"]
         course_name = course["name"]
 
-        items = fetch_assignments(course_id, days_ahead=0, include_overdue=True)
+        items = fetch_assignments(course_id, days_ahead = 0, include_overdue = True)
         if not isinstance(items, list):
             continue
 
         for a in items:
-            if a.get("is_overdue") is True and a.get("submitted") is False:
-                a["course_name"] = course_name
-                overdue.append(a)
+            if a.get("is_overdue") is not True:
+                continue
+            if a.get("submitted") is True:
+                continue
 
-    overdue.sort(key=lambda x: x.get("due_at", ""))  # oldest overdue first
+            due_raw = a.get("due_at")
+            if not due_raw:
+                continue
+
+            try:
+                due = datetime.fromisoformat(due_raw.replace("Z", "+00:00"))
+            except Exception:
+                continue
+
+            if not (overdue_cutoff <= due <= now):
+                continue
+
+            a["course_name"] = course_name
+            overdue.append(a)
+    overdue.sort(key=lambda x: x.get("due_at", ""), reverse=True)
+
 
     return {
         "generated_at": now.isoformat(),
