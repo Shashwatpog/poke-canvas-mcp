@@ -346,6 +346,259 @@ def get_recently_graded(days_back: int = 7, term_prefix: str | None = None, max_
     out.sort(key=lambda x: x["grade_posted_at"], reverse=True)
     return out;
 
+@mcp.tool(description="daily student summary: upcoming deadlines, recent announcements, recent grades, and overdue work")
+def get_today_summary(
+    future_hours: int = 48,
+    past_hours: int = 48,
+    term_prefix: str | None = None,
+    max_courses: int = 8,
+    per_course_announcements: int = 5,
+    include_announcement_body: bool = False,
+    include_only_with_feedback: bool = False,
+    planner_per_page: int = 100,
+):
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(hours=past_hours)
+    window_end = now + timedelta(hours=future_hours)
+
+    days_ahead = max(1, int((future_hours + 23) // 24))
+    days_back = max(1, int((past_hours + 23) // 24))
+
+    courses = fetch_dashboard_cards(term_prefix)
+    if not term_prefix and max_courses and max_courses > 0:
+        courses = courses[:max_courses]
+    allowed_course_ids = {c["id"] for c in courses}
+
+    # planner deadlines + events
+    planner_params = {
+        "per_page": planner_per_page,
+        "start_date": now.isoformat().replace("+00:00", "Z"),
+        "end_date": (now + timedelta(days=days_ahead)).isoformat().replace("+00:00", "Z"),
+    }
+
+    r = canvas_get("/api/v1/planner/items", planner_params)
+    planner_items = r["data"] if isinstance(r, dict) and r.get("ok") else []
+
+    deadlines: list[dict[str, Any]] = []
+    events: list[dict[str, Any]] = []
+
+    for item in planner_items or []:
+        course_id = item.get("course_id")
+        if course_id not in allowed_course_ids:
+            continue
+
+        dt_raw = item.get("plannable_date")
+        if not dt_raw:
+            continue
+
+        try:
+            dt = datetime.fromisoformat(dt_raw.replace("Z", "+00:00"))
+        except Exception:
+            continue
+
+        if not (now <= dt <= window_end):
+            continue
+
+        plannable = item.get("plannable") or {}
+        pl_type = item.get("plannable_type")
+
+        normalized: dict[str, Any] = {
+            "type": pl_type,
+            "course_id": course_id,
+            "course_name": item.get("context_name"),
+            "id": item.get("plannable_id"),
+            "title": plannable.get("title"),
+            "date": dt.isoformat(),
+            "new_activity": item.get("new_activity", False),
+            "html_url": abs_url(item.get("html_url") or ""),
+        }
+
+        subs = item.get("submissions")
+        if isinstance(subs, dict):
+            normalized["submission"] = {
+                "submitted": subs.get("submitted"),
+                "graded": subs.get("graded"),
+                "late": subs.get("late"),
+                "missing": subs.get("missing"),
+                "posted_at": subs.get("posted_at"),
+                "has_feedback": subs.get("has_feedback"),
+            }
+
+        if pl_type in ("assignment", "quiz"):
+            normalized["due_at"] = plannable.get("due_at")
+            normalized["points_possible"] = plannable.get("points_possible")
+            normalized["assignment_id"] = plannable.get("assignment_id")
+
+        if pl_type == "calendar_event":
+            normalized["start_at"] = plannable.get("start_at")
+            normalized["end_at"] = plannable.get("end_at")
+            normalized["location_name"] = plannable.get("location_name")
+            normalized["online_meeting_url"] = plannable.get("online_meeting_url")
+            events.append(normalized)
+            continue
+
+        if pl_type in ("assignment", "quiz"):
+            sub = normalized.get("submission")
+            if isinstance(sub, dict) and sub.get("submitted") is True:
+                continue
+            deadlines.append(normalized)
+
+    deadlines.sort(key=lambda x: x.get("date", ""))
+    events.sort(key=lambda x: x.get("date", ""))
+
+    # past hour announcements
+    announcements: list[dict[str, Any]] = []
+
+    for course in courses:
+        course_id = course["id"]
+        course_name = course["name"]
+
+        params = {"only_announcements": "true", "per_page": 50}
+        rr = canvas_get(f"/api/v1/courses/{course_id}/discussion_topics", params)
+        if not (isinstance(rr, dict) and rr.get("ok")):
+            continue
+
+        topics = rr["data"] or []
+        per_course_bucket: list[dict[str, Any]] = []
+
+        for topic in topics:
+            posted_raw = topic.get("posted_at") or topic.get("created_at")
+            if not posted_raw:
+                continue
+
+            try:
+                posted = datetime.fromisoformat(posted_raw.replace("Z", "+00:00"))
+            except Exception:
+                continue
+
+            if posted < (now - timedelta(days=days_back)):
+                continue
+
+            if not (window_start <= posted <= now):
+                continue
+
+            item: dict[str, Any] = {
+                "type": "announcement",
+                "course_id": course_id,
+                "course_name": course_name,
+                "id": topic.get("id"),
+                "title": topic.get("title"),
+                "posted_at": posted.isoformat(),
+                "author": (topic.get("author") or {}).get("display_name") or topic.get("user_name"),
+                "read_state": topic.get("read_state"),
+                "unread_count": topic.get("unread_count"),
+                "html_url": abs_url(topic.get("html_url") or topic.get("url")),
+            }
+
+            if include_announcement_body:
+                body_html = topic.get("message") or ""
+                item["message_html"] = body_html
+                item["message_text"] = strip_html(body_html) if body_html else ""
+
+            per_course_bucket.append(item)
+
+        per_course_bucket.sort(key=lambda x: x.get("posted_at", ""), reverse=True)
+        announcements.extend(per_course_bucket[:per_course_announcements])
+
+    announcements.sort(key=lambda x: x.get("posted_at", ""), reverse=True)
+
+    # graded items 
+    graded: list[dict[str, Any]] = []
+
+    graded_params = {
+        "per_page": planner_per_page,
+        "start_date": (now - timedelta(days=days_back)).isoformat().replace("+00:00", "Z"),
+        "end_date": now.isoformat().replace("+00:00", "Z"),
+    }
+    rr = canvas_get("/api/v1/planner/items", graded_params)
+    graded_items = rr["data"] if isinstance(rr, dict) and rr.get("ok") else []
+
+    for item in graded_items or []:
+        course_id = item.get("course_id")
+        if course_id not in allowed_course_ids:
+            continue
+
+        subs = item.get("submissions")
+        if not isinstance(subs, dict):
+            continue
+        if subs.get("graded") is not True:
+            continue
+        if include_only_with_feedback and subs.get("has_feedback") is not True:
+            continue
+
+        grade_posted_raw = subs.get("posted_at") or item.get("plannable_date")
+        if not grade_posted_raw:
+            continue
+
+        try:
+            grade_posted_at = datetime.fromisoformat(grade_posted_raw.replace("Z", "+00:00"))
+        except Exception:
+            continue
+
+        if not (window_start <= grade_posted_at <= now):
+            continue
+
+        plannable = item.get("plannable") or {}
+        pl_type = item.get("plannable_type")
+
+        graded.append({
+            "type": "graded",
+            "plannable_type": pl_type,
+            "course_id": course_id,
+            "course_name": item.get("context_name"),
+            "id": item.get("plannable_id"),
+            "title": plannable.get("title"),
+            "grade_posted_at": grade_posted_at.isoformat(),
+            "html_url": abs_url(item.get("html_url") or ""),
+            "submission": {
+                "submitted": subs.get("submitted"),
+                "graded": subs.get("graded"),
+                "late": subs.get("late"),
+                "missing": subs.get("missing"),
+                "posted_at": subs.get("posted_at"),
+                "has_feedback": subs.get("has_feedback"),
+            },
+        })
+
+    graded.sort(key=lambda x: x.get("grade_posted_at", ""), reverse=True)
+
+    # overdue and not submitted assignments
+    overdue: list[dict[str, Any]] = []
+    for course in courses:
+        course_id = course["id"]
+        course_name = course["name"]
+
+        items = fetch_assignments(course_id, days_ahead=0, include_overdue=True)
+        if not isinstance(items, list):
+            continue
+
+        for a in items:
+            if a.get("is_overdue") is True and a.get("submitted") is False:
+                a["course_name"] = course_name
+                overdue.append(a)
+
+    overdue.sort(key=lambda x: x.get("due_at", ""))  # oldest overdue first
+
+    return {
+        "generated_at": now.isoformat(),
+        "window": {
+            "past_hours": past_hours,
+            "future_hours": future_hours,
+        },
+        "counts": {
+            "deadlines": len(deadlines),
+            "events": len(events),
+            "announcements": len(announcements),
+            "graded": len(graded),
+            "overdue": len(overdue),
+        },
+        "deadlines": deadlines,
+        "events": events,
+        "announcements": announcements,
+        "graded": graded,
+        "overdue": overdue,
+    }
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     host = "0.0.0.0"
