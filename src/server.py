@@ -269,8 +269,82 @@ def get_week_ahead(days_ahead: int = 7, days_back: int = 0, per_page: int = 100)
     return out
 
 @mcp.tool(description="get assignment graded with the grade notification")
-def get_recently_graded():
-    return 0;
+def get_recently_graded(days_back: int = 7, term_prefix: str | None = None, max_courses: int = 8, per_page : int = 100, include_only_with_feedback: bool = False):
+
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(days=days_back)
+
+    allowed_course_ids: set[int] | None = None
+    if term_prefix is not None or (max_courses and max_courses > 0):
+        courses = fetch_dashboard_cards(term_prefix)
+        if not term_prefix and max_courses and max_courses > 0:
+            courses = courses[:max_courses]
+        allowed_course_ids = {c["id"] for c in courses}
+
+    params = {
+        "per_page": per_page,
+        "start_date": start.isoformat().replace("+00:00", "Z"),
+        "end_date": now.isoformat().replace("+00:00", "Z"),
+    }
+
+    r = canvas_get("/api/v1/planner/items", params)
+    if not r["ok"]:
+        return r
+
+    items = r["data"] or []
+    out: list[dict[str, Any]] = []
+
+    for item in items:
+        course_id = item.get("course_id")
+        if allowed_course_ids is not None and course_id not in allowed_course_ids:
+            continue
+
+        subs = item.get("submissions")
+        if not isinstance(subs, dict):
+            continue
+
+        if subs.get("graded") is not True:
+            continue
+
+        if include_only_with_feedback and subs.get("has_feedback") is not True:
+            continue
+
+        grade_posted_raw = subs.get("posted_at") or item.get("plannable_date")
+        if not grade_posted_raw:
+            continue
+
+        try:
+            grade_posted_at = datetime.fromisoformat(grade_posted_raw.replace("Z", "+00:00"))
+        except Exception:
+            continue
+
+        if not (start <= grade_posted_at <= now):
+            continue
+
+        plannable = item.get("plannable") or {}
+        pl_type = item.get("plannable_type")
+
+        out.append({
+            "type": "graded",
+            "plannable_type": pl_type, 
+            "course_id": course_id,
+            "course_name": item.get("context_name"),
+            "id": item.get("plannable_id"),
+            "title": plannable.get("title"),
+            "grade_posted_at": grade_posted_at.isoformat(),
+            "html_url": abs_url(item.get("html_url") or ""),
+            "submission": {
+                "submitted": subs.get("submitted"),
+                "graded": subs.get("graded"),
+                "late": subs.get("late"),
+                "missing": subs.get("missing"),
+                "posted_at": subs.get("posted_at"),
+                "has_feedback": subs.get("has_feedback"),
+            },
+        })
+
+    out.sort(key=lambda x: x["grade_posted_at"], reverse=True)
+    return out;
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
