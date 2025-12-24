@@ -120,7 +120,7 @@ The solution to this pain point is this Canvas MCP Integration!
 
 ## How this MCP works
 
-I was able to go throught the Canvas LMS API documentation (which was difficult and confusing) along with manually playing around in the Networks tab to find various API endpoints that we can hit to get student and course data. 
+I was able to go through the Canvas LMS API documentation (which was difficult and confusing) along with manually playing around in the Networks tab to find various API endpoints that we can hit to get student and course data. 
 
 The MCP aggregates and normalizes multiple endpoints: 
 
@@ -140,7 +140,7 @@ Students like myself don't have that authorization and cannot generate developer
 
 Hence, I had to manually hit each API endpoint before using it to make sure I had access to them.
 
-As the response in json format also included a lot of metadata and details that were unneccessary, I decided to look through the responses and figure out which items to keep and feed as context to poke. For example, when fetching courses, I decided to only return the course id and name in the mcp tool. 
+As the response in json format also included a lot of metadata and details that were unnecessary, I decided to look through the responses and figure out which items to keep and feed as context to poke. For example, when fetching courses, I decided to only return the course id and name in the mcp tool. 
 
 Another challenge I faced was Canvas keeping my old courses from previous semesters active and enrolled. The only work around to this was using the prefix for each term such as "25-FS" which shows 2025 Fall Semester courses or "26-SS" which shows 2026 Spring Semester courses.
 
