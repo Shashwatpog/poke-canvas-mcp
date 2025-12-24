@@ -2,6 +2,9 @@
 import os
 import httpx
 from datetime import datetime,timezone, timedelta
+import re 
+from html import unescape
+from typing import Any
 from fastmcp import FastMCP
 from dotenv import load_dotenv
 
@@ -24,6 +27,21 @@ def canvas_get(path : str, params : dict | None = None):
             "url": str(r.url)
         }
     return {"ok": True, "data":r.json()}
+
+# the response from announcements endpoint has weird html characters, this helper converts to text and cleans it
+def strip_html(html: str) -> str:
+    text = re.sub(r"<br\s*/?>", "\n", html, flags=re.I)
+    text = re.sub(r"</p\s*>", "\n\n", text, flags=re.I)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = unescape(text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+def abs_url(url: str | None) -> str | None:
+    if not url:
+        return url
+    if url.startswith("/"):
+        return base_url + url
+    return url
 
 def fetch_dashboard_cards(term_prefix: str | None = None):
     url = base_url + "/api/v1/dashboard/dashboard_cards?per_page=100"
@@ -98,7 +116,7 @@ def get_assignments(course_id: int, days_ahead: int, include_overdue: bool):
     return fetch_assignments(course_id, days_ahead, include_overdue)
 
 @mcp.tool(description="get a list of all upcoming assignments in the upcoming week in one call")
-def get_upcoming_assignments(days_ahead: int = 7, include_overdue: bool = True, term_prefix: str | None = None, max_courses: int = 8):
+def get_upcoming_assignments(days_ahead: int = 7, include_overdue: bool = False, term_prefix: str | None = None, max_courses: int = 8):
     courses = fetch_dashboard_cards(term_prefix)
 
     if not term_prefix and max_courses and max_courses > 0:
@@ -120,17 +138,139 @@ def get_upcoming_assignments(days_ahead: int = 7, include_overdue: bool = True, 
     return all_assignments;
 
 @mcp.tool(description="get a list of recent announcements")
-def get_recent_announcements(days_back: int =7, term_prefix: str | None = None):
-    return 0;
+def get_recent_announcements(days_back: int =7, term_prefix: str | None = None, max_courses: int = 8, per_course: int = 5, include_body: bool = False):
+    now = datetime.now(timezone.utc)
+    start =  now - timedelta(days=days_back)
+
+    courses = fetch_dashboard_cards(term_prefix)
+
+    if not term_prefix and max_courses and max_courses > 0:
+        courses = courses[:max_courses]
+    
+    all_items: list[dict[str, Any]] = []
+
+    for course in courses:
+        course_id = course["id"]
+        course_name = course["name"]
+        params = {
+            "only_announcements" : "true",
+            "per_page" : 50
+        }
+
+        r = canvas_get(f"/api/v1/courses/{course_id}/discussion_topics", params)
+
+        if not r["ok"]:
+            continue
+
+        topics = r["data"] or []
+        results_for_course: list[dict[str, Any]] = []
+
+        for topic in topics:
+            posted_raw = topic.get("posted_at") or topic.get("created_at")
+            if not posted_raw:
+                continue
+
+            posted = datetime.fromisoformat(posted_raw.replace("Z", "+00:00"))
+            if posted < start:
+                continue
+
+            item: dict[str, Any] = {
+                "type": "announcement",
+                "course_id": course_id,
+                "course_name": course_name,
+                "id": topic.get("id"),
+                "title": topic.get("title"),
+                "posted_at": posted.isoformat(),
+                "author": (topic.get("author") or {}).get("display_name") or topic.get("user_name"),
+                "read_state": topic.get("read_state"),
+                "unread_count": topic.get("unread_count"),
+                "html_url": abs_url(topic.get("html_url") or topic.get("url")),
+            }
+
+            if include_body:
+                body_html = topic.get("message") or ""
+                item["message_html"] = body_html
+                item["message_text"] = strip_html(body_html) if body_html else ""
+
+            results_for_course.append(item)
+
+        results_for_course.sort(key=lambda x: x["posted_at"], reverse=True)
+        all_items.extend(results_for_course[:per_course])
+
+    all_items.sort(key=lambda x: x["posted_at"], reverse=True)
+    return all_items
+
+@mcp.tool(description="get all events for the upcoming week")
+def get_week_ahead(days_ahead: int = 7, days_back: int = 0, per_page: int = 100):
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(days=days_back)
+    end = now + timedelta(days=days_ahead)
+    params = {
+        "per_page": per_page,
+        "start_date": start.isoformat().replace("+00:00", "Z"),
+        "end_date": end.isoformat().replace("+00:00", "Z"), 
+    }
+
+    r = canvas_get("/api/v1/planner/items", params)
+    if not r["ok"]:
+        return r
+
+    items = r["data"] or []
+    #print("planner/items returned:", len(items))
+    out: list[dict[str, Any]] = []
+
+    for item in items:
+        dt_raw = item.get("plannable_date")
+        if not dt_raw:
+            continue
+
+        dt = datetime.fromisoformat(dt_raw.replace("Z", "+00:00"))
+        if not (start <= dt <= end):
+            continue
+
+        plannable = item.get("plannable") or {}
+        pl_type = item.get("plannable_type")
+
+        normalized: dict[str, Any] = {
+            "type": pl_type,
+            "course_id": item.get("course_id"),
+            "course_name": item.get("context_name"),
+            "id": item.get("plannable_id"),
+            "title": plannable.get("title"),
+            "date": dt.isoformat(),
+            "new_activity": item.get("new_activity", False),
+            "html_url": abs_url(item.get("html_url") or ""),
+        }
+
+        subs = item.get("submissions")
+        if isinstance(subs, dict):
+            normalized["submission"] = {
+                "submitted": subs.get("submitted"),
+                "graded": subs.get("graded"),
+                "late": subs.get("late"),
+                "missing": subs.get("missing"),
+                "posted_at": subs.get("posted_at"),
+                "has_feedback": subs.get("has_feedback"),
+            }
+
+        if pl_type in ("assignment", "quiz"):
+            normalized["due_at"] = plannable.get("due_at")
+            normalized["points_possible"] = plannable.get("points_possible")
+            normalized["assignment_id"] = plannable.get("assignment_id")
+
+        if pl_type == "calendar_event":
+            normalized["start_at"] = plannable.get("start_at")
+            normalized["end_at"] = plannable.get("end_at")
+            normalized["location_name"] = plannable.get("location_name")
+            normalized["online_meeting_url"] = plannable.get("online_meeting_url")
+
+        out.append(normalized)
+    out.sort(key=lambda x: x["date"])
+    return out
 
 @mcp.tool(description="get assignment graded with the grade notification")
 def get_recently_graded():
     return 0;
-
-@mcp.tool(description="get all events for the upcoming week")
-def get_week_ahead():
-    return 0;
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
