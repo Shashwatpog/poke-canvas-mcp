@@ -9,3 +9,7 @@ services:
     envVars:
       - key: ENVIRONMENT
         value: production
+      - key: CANVAS_BASE_URL
+        sync: false
+      - key: CANVAS_ACCESS_TOKEN
+        sync: false
