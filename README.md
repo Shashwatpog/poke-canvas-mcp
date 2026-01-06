@@ -142,7 +142,7 @@ Hence, I had to manually hit each API endpoint before using it to make sure I ha
 
 As the response in json format also included a lot of metadata and details that were unnecessary, I decided to look through the responses and figure out which items to keep and feed as context to poke. For example, when fetching courses, I decided to only return the course id and name in the mcp tool. 
 
-Another challenge I faced was Canvas keeping my old courses from previous semesters active and enrolled. The only work around to this was using the prefix for each term such as "25-FS" which shows 2025 Fall Semester courses or "26-SS" which shows 2026 Spring Semester courses.
+Another challenge I faced was Canvas keeping my old courses from previous semesters active and enrolled. The only work around to this was using the prefix for each term such as "26FS" which shows 2026 Fall Semester courses or "26SS" which shows 2026 Spring Semester courses.
 
 Moreover, I also had to normalize the timestamps in various fields such as "due_at", "graded_at", etc. to UTC to make it consistent and easy to filter deadlines. 
 

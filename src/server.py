@@ -46,7 +46,7 @@ def abs_url(url: str | None) -> str | None:
 def fetch_dashboard_cards(term_prefix: str | None = None):
     url = base_url + "/api/v1/dashboard/dashboard_cards?per_page=100"
     headers = {"Authorization": f"Bearer {access_token}"}
-    r = httpx.get(url, headers=headers)
+    r = httpx.get(url, headers=headers, timeout=30.0)
     cards = r.json()
 
     data = []
@@ -101,35 +101,33 @@ def fetch_assignments(course_id: int, days_ahead: int, include_overdue: bool):
     return results
 
 @mcp.tool(description="""
-          Use when the user asks: 'What classes am I enrolled in?' or 'Show all my courses'.
-          Returns Canvas course objects for all enrolled/active courses (raw Canvas response). 
-          Best for troubleshooting or listing everything.
-          """)
+Use when the user asks: 'What classes am I enrolled in?' or 'Show all my courses'.
+Returns Canvas course objects for all enrolled/active courses (raw Canvas response). 
+Best for troubleshooting or listing everything.""")
 def list_courses_raw(_=None):
     url = base_url+"/api/v1/courses?per_page=100"
     headers = {"Authorization": f"Bearer {access_token}"}
-    r = httpx.get(url, headers=headers)
+    r = httpx.get(url, headers=headers, timeout=30.0)
     return r.json();
 
 @mcp.tool(description="""
-          Use when the user asks: 'What are my current classes this term?' or 'Show my dashboard classes'.
-          Returns a lightweight list of active dashboard courses in the user's dashboard order (id + name).
-          Supports filtering by term prefix like '26SS' or '26FS'.
-         """)
+Use when the user asks: 'What are my current classes this term?' or 'Show my dashboard classes'.
+Returns a lightweight list of active dashboard courses in the user's dashboard order (id + name).
+Supports filtering by term prefix like '26SS' or '26FS'.""")
 def get_dashboard_cards(term_prefix: str | None = None):
     return fetch_dashboard_cards(term_prefix)
 
 @mcp.tool(description="""
-          Use when the user asks about assignments for ONE specific course (e.g. 'What is due in my Algorithms class?'). 
-          Returns upcoming assignments (and optionally overdue) for that course with due date and submission status. 
-          If the user wants everything across classes, prefer get_upcoming_assignments.""")
+Use when the user asks about assignments for ONE specific course (e.g. 'What is due in my Algorithms class?'). 
+Returns upcoming assignments (and optionally overdue) for that course with due date and submission status. 
+If the user wants everything across classes, prefer get_upcoming_assignments.""")
 def get_course_assignments(course_id: int, days_ahead: int, include_overdue: bool):
     return fetch_assignments(course_id, days_ahead, include_overdue)
 
 @mcp.tool(description="""
-          Use when the user asks: 'What assignments are due soon?' 'What do I have due this week?' or 'Any overdue work?' 
-          Returns a single sorted list of upcoming (and optionally overdue) assignments across dashboard courses. 
-          Best for deadline-only views (no announcements/grades).""")
+Use when the user asks: 'What assignments are due soon?' 'What do I have due this week?' or 'Any overdue work?' 
+Returns a single sorted list of upcoming (and optionally overdue) assignments across dashboard courses. 
+Best for deadline-only views (no announcements/grades).""")
 def get_upcoming_assignments(days_ahead: int = 7, include_overdue: bool = False, term_prefix: str | None = None, max_courses: int = 8):
     courses = fetch_dashboard_cards(term_prefix)
 
@@ -152,9 +150,9 @@ def get_upcoming_assignments(days_ahead: int = 7, include_overdue: bool = False,
     return all_assignments;
 
 @mcp.tool(description="""
-          Use when the user asks: 'Any new announcements?' 'Did my professor post anything?' or 'Any class updates?' 
-          Returns recent Canvas announcements across dashboard courses (title, author, posted time, link). 
-          Optionally include the full body text for summarization.""")
+Use when the user asks: 'Any new announcements?' 'Did my professor post anything?' or 'Any class updates?' 
+Returns recent Canvas announcements across dashboard courses (title, author, posted time, link). 
+Optionally include the full body text for summarization.""")
 def get_recent_announcements(days_back: int =7, term_prefix: str | None = None, max_courses: int = 8, per_course: int = 5, include_body: bool = False):
     now = datetime.now(timezone.utc)
     start =  now - timedelta(days=days_back)
@@ -218,9 +216,9 @@ def get_recent_announcements(days_back: int =7, term_prefix: str | None = None, 
     return all_items
 
 @mcp.tool(description="""
-          Use when the user asks: 'What does my week look like?' 'What’s coming up?' or 'Help me plan my week'. 
-          Returns Canvas planner items in a date range (assignments, quizzes, calendar events) with links and course names. 
-          Best for planning; not as curated as get_today_summary.""")
+Use when the user asks: 'What does my week look like?' 'What’s coming up?' or 'Help me plan my week'. 
+Returns Canvas planner items in a date range (assignments, quizzes, calendar events) with links and course names. 
+Best for planning; not as curated as get_today_summary.""")
 def get_week_ahead(days_ahead: int = 7, days_back: int = 0, per_page: int = 100):
     now = datetime.now(timezone.utc)
     start = now - timedelta(days=days_back)
@@ -289,9 +287,9 @@ def get_week_ahead(days_ahead: int = 7, days_back: int = 0, per_page: int = 100)
     return out
 
 @mcp.tool(description="""
-          Use when the user asks: 'Did anything get graded?' 'Any grades posted recently?' or 'Any feedback?' 
-          Returns planner items that were graded in the last N days (optionally only those with feedback). 
-          Best for grade-checking / notifications.""")
+Use when the user asks: 'Did anything get graded?' 'Any grades posted recently?' or 'Any feedback?' 
+Returns planner items that were graded in the last N days (optionally only those with feedback). 
+Best for grade-checking / notifications.""")
 def get_recently_graded(days_back: int = 7, term_prefix: str | None = None, max_courses: int = 8, per_page : int = 100, include_only_with_feedback: bool = False):
 
     now = datetime.now(timezone.utc)
@@ -369,10 +367,9 @@ def get_recently_graded(days_back: int = 7, term_prefix: str | None = None, max_
     out.sort(key=lambda x: x["grade_posted_at"], reverse=True)
     return out;
 
-@mcp.tool(description=
-          """Use for daily check-ins like: 'What do I need to do today?' 'Anything important on Canvas?' 
-          Returns a curated summary window: upcoming deadlines + events, recent announcements, newly graded items, 
-          and overdue not-submitted assignments from the last week. Best default tool for general student questions.""")
+@mcp.tool(description="""
+Use for daily check-ins like: 'What do I need to do today?' 'Anything important on Canvas?' 
+Returns a curated summary window: upcoming deadlines + events, recent announcements, newly graded items, and overdue not-submitted assignments from the last week. Best default tool for general student questions.""")
 def get_today_summary(
     future_hours: int = 48,
     past_hours: int = 48,
