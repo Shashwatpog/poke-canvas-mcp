@@ -95,7 +95,7 @@ Example: "Use Canvas MCP connection's get_today_summary tool"
 
 - This tool returns upcoming assignments, deadlines, announcements, calendar events in the upcoming week to help user plan their week better.
 
-#### **6. get_courses**
+#### **6. list_courses_raw**
 
 - This tool returns list of all the courses that are active.
 
@@ -103,9 +103,9 @@ Example: "Use Canvas MCP connection's get_today_summary tool"
 
 - This tool returns list of all the courses currently on the dashboard in the order set by the user. Used for easy filtering of courses.
 
-#### **8. get_assignments**
+#### **8. get_course_assignments**
 
-- This tool returns all the upcoming assignments with the option to include overdue assignments.
+- This tool returns all the upcoming assignments for a specific course with the option to include overdue assignments using course id.
 
 
 ## Problems I faced
