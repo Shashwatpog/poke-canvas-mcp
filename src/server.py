@@ -640,6 +640,42 @@ def get_today_summary(
         "overdue": overdue,
     }
 
+@mcp.resource(
+    "canvas://terms/prefix",
+    description="How Canvas term_prefix works.",
+)
+def resource_term_prefix():
+    return {
+        "where": "dashboard_cards[].shortName starts with '(YYTT)'",
+        "format": "YY = year (25,26,27), TT = FS|SS|US",
+        "examples": ["26SS=Spring 2026", "26FS=Fall 2026", "27US=Summer 2027"],
+        "use": "Pass term_prefix to tools to hide old/community courses",
+    }
+
+@mcp.resource(
+    "canvas://courses/dashboard/{term_prefix}",
+    description="Dashboard courses filtered by term prefix like '26SS' or '26FS'.",
+)
+def resource_dashboard_courses_by_term(term_prefix: str):
+    return fetch_dashboard_cards(term_prefix=term_prefix)
+
+@mcp.resource(
+    "canvas://help",
+    description="Tool routing cheatsheet for this MCP (helps assistants choose the right tool).",
+)
+def resource_help():
+    return {
+        "recommended_default_tool": "get_today_summary",
+        "routing": [
+            {"ask_like": ["what do i need to do today", "anything important", "today on canvas"], "use_tool": "get_today_summary"},
+            {"ask_like": ["what's due", "deadlines", "overdue", "due this week"], "use_tool": "get_upcoming_assignments"},
+            {"ask_like": ["announcements", "updates", "did my professor post"], "use_tool": "get_recent_announcements"},
+            {"ask_like": ["graded", "grades posted", "feedback"], "use_tool": "get_recently_graded"},
+            {"ask_like": ["week ahead", "plan my week"], "use_tool": "get_week_ahead"},
+        ],
+        "term_prefix_hint": "If old courses show up, use term_prefix like '26SS' to filter.",
+    }
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     host = "0.0.0.0"
