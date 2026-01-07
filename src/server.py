@@ -17,7 +17,7 @@ mcp = FastMCP("poke-canvas-mcp")
 def canvas_get(path : str, params : dict | None = None):
     url = base_url + path
     headers = {"Authorization" : f"Bearer {access_token}"}
-    r = httpx.get(url, headers=headers, params=params, timeout=30.0)
+    r = httpx.get(url, headers=headers, params=params, timeout=90.0)
 
     if r.status_code >= 400:
         return{
@@ -46,7 +46,7 @@ def abs_url(url: str | None) -> str | None:
 def fetch_dashboard_cards(term_prefix: str | None = None):
     url = base_url + "/api/v1/dashboard/dashboard_cards?per_page=100"
     headers = {"Authorization": f"Bearer {access_token}"}
-    r = httpx.get(url, headers=headers, timeout=30.0)
+    r = httpx.get(url, headers=headers, timeout=90.0)
     cards = r.json()
 
     data = []
@@ -107,7 +107,7 @@ Best for troubleshooting or listing everything.""")
 def list_courses_raw(_=None):
     url = base_url+"/api/v1/courses?per_page=100"
     headers = {"Authorization": f"Bearer {access_token}"}
-    r = httpx.get(url, headers=headers, timeout=30.0)
+    r = httpx.get(url, headers=headers, timeout=90.0)
     return r.json();
 
 @mcp.tool(description="""
