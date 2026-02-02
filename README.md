@@ -6,7 +6,7 @@ What is [Poke](https://poke.com/)? - AI assistant that I use day to day for mana
 
 ## Overview
 
-- **Authentication**: Canvas Personal Access Token
+- **Authentication**: Canvas Personal Access Token, API Key (Bearer Token)
 - **Data Access**: Read only, Canvas student account
 
 ## Questions this MCP can help answer with Poke
@@ -36,7 +36,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# Edit .env with your Canvas credentials
+# Edit .env with your Canvas credentials and POKE_API_KEY (use a strong key)
 
 # Run
 python src/server.py
@@ -50,6 +50,7 @@ Server runs on http://localhost:8000/mcp, connect using "Streamable HTTP" Transp
 ```bash
 CANVAS_BASE_URL=https://your_school.instructure.com 
 CANVAS_ACCESS_TOKEN=you_canvas_access_token
+POKE_API_KEY=your_api_key
 ```
 
 ## Deploying
@@ -59,11 +60,14 @@ The [render.yaml](render.yaml) file contains configuration to deploy on render
 1. Fork this repository
 2. Create a new web service on render
 3. Connect your forked repository
-4. Enter the environment variables and deploy
+4. Enter the environment variables and deploy (CANVAS_BASE_URL, CANVAS_ACCESS_TOKEN, POKE_API_KEY)
 
 ## Poke Integration
 
 After deploying the MCP, add the MCP URL in poke settings at [poke.com/settings/connections](https://poke.com/settings/connections)
+
+Also add your API key so Poke can authenticate to the MCP server (header: x-api-key or Authorization: Bearer).
+Use a strong key (32+ random characters) or generate one before adding it to Render and Poke.
 
 To test it out, ask poke "What do I need to do today on canvas?" "What are my upcoming deadlines on canvas?"
 
