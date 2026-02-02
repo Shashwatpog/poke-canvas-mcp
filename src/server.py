@@ -1,18 +1,44 @@
 #!/usr/bin/env python3
 import os
+import secrets
 import httpx
 from datetime import datetime,timezone, timedelta
 import re 
 from html import unescape
 from typing import Any
 from fastmcp import FastMCP
+from fastmcp.server.dependencies import get_http_request
+from fastmcp.server.middleware.middleware import Middleware, MiddlewareContext, CallNext
 from dotenv import load_dotenv
 
 load_dotenv()
 base_url = os.getenv("CANVAS_BASE_URL")
 access_token = os.getenv("CANVAS_ACCESS_TOKEN")
+poke_api_key = os.getenv("POKE_API_KEY")
 
-mcp = FastMCP("poke-canvas-mcp")
+if not poke_api_key:
+    raise RuntimeError("POKE_API_KEY is required. Set it in your environment to secure this MCP server.")
+
+class ApiKeyMiddleware(Middleware):
+    def __init__(self, api_key: str, header_name: str = "x-api-key"):
+        self.api_key = api_key
+        self.header_name = header_name
+
+    async def on_message(self, context: MiddlewareContext, call_next: CallNext):
+        request = get_http_request()
+        provided = request.headers.get(self.header_name)
+
+        if not provided:
+            auth = request.headers.get("authorization")
+            if auth and auth.lower().startswith("bearer "):
+                provided = auth[7:].strip()
+
+        if not provided or not secrets.compare_digest(provided, self.api_key):
+            raise PermissionError("Missing or invalid API key.")
+
+        return await call_next(context)
+
+mcp = FastMCP("poke-canvas-mcp", middleware=[ApiKeyMiddleware(poke_api_key)])
 
 def canvas_get(path : str, params : dict | None = None):
     url = base_url + path
